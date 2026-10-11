@@ -9,7 +9,7 @@ const program = new Command()
   .description(
     "Count profanity and insults in your local coding-agent chats. Offline, human messages only.",
   )
-  .version("0.1.1");
+  .version("0.1.2");
 function date(value: string): string {
   const parsed = new Date(value);
   if (

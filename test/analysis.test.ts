@@ -179,6 +179,35 @@ test("Codex response-only legacy fallback strips injected context and marks cove
   assert.equal(diag.list()[0]?.code, "legacy-format");
 });
 
+test("Codex excludes injected skills and internal context in events and legacy projections", () => {
+  const skill = "<skill><name>fixture</name>\n## My request for Codex:\nidiot</skill>";
+  const internal = '<codex_internal_context source="fixture">shit</codex_internal_context>';
+  for (const format of ["event_msg", "response_item", "message"] as const) {
+    const parser = new JsonlParser("codex", "fixture", new Diagnostics());
+    parser.consume({ type: "session_meta", payload: { id: "s" } });
+    for (const text of [skill, internal, `${skill}\n${internal}\ndamn fix it`]) {
+      parser.consume(
+        format === "event_msg"
+          ? { type: format, payload: { type: "user_message", message: text } }
+          : format === "response_item"
+            ? {
+                type: format,
+                payload: {
+                  type: "message",
+                  role: "user",
+                  content: [{ type: "input_text", text }],
+                },
+              }
+            : { type: format, role: "user", content: text },
+      );
+    }
+    assert.deepEqual(
+      parser.finish().map((message) => message.text),
+      ["damn fix it"],
+    );
+  }
+});
+
 test("HTML embeds aggregates safely and carries an offline CSP with executable script hash", () => {
   const a = new Aggregator(
     {

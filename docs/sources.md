@@ -45,6 +45,14 @@ without counting as user turns. Claude launcher records with known
 informational notes. Unknown envelopes still produce coverage warnings. Codex
 response-only fallback is also informational and retains its provenance note.
 
+Codex injects selected skill instructions and hidden internal context using the
+user role. Those wrappers aren't authored conversation text. The reader removes
+`<skill>` and `<codex_internal_context>` fragments before extracting an IDE
+request, while preserving human prose outside the wrappers. This follows the
+official [skill fragment serializer](https://github.com/openai/codex/blob/27065a91ccbf5ba8532844be3777fcf83b77820d/codex-rs/ext/skills/src/fragments.rs)
+and [internal context serializer](https://github.com/openai/codex/blob/27065a91ccbf5ba8532844be3777fcf83b77820d/codex-rs/core/src/context/internal_model_context.rs).
+Regression coverage exercises current user events and both legacy projections.
+
 Synthetic regressions cover these cases. A real count-only run verifies current
 files without invoking inference. Live counts can change while clients write;
 before/after totals aren't a fixed recovery benchmark.

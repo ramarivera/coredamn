@@ -11,6 +11,9 @@ export function contentText(content: Content | undefined): string {
 export function humanText(text: string, codex = false): string {
   let result = text;
   if (codex) {
+    // Codex injects these contextual fragments as user-role records. Strip
+    // them before looking for an IDE request marker inside the human text.
+    result = result.replace(/<(skill|codex_internal_context)\b[^>]*>[\s\S]*?<\/\1>/gu, " ");
     const marker = "## My request for Codex:";
     if (result.includes(marker)) result = result.slice(result.indexOf(marker) + marker.length);
     else if (
