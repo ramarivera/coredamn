@@ -1,0 +1,11 @@
+{
+  "agents": ["claude", "omp", "grok"],
+  "paths": {
+    "claude": ["~/.claude"],
+    "omp": ["~/.omp/agent/sessions"],
+    "grok": ["~/.grok/sessions"]
+  },
+  "languages": ["en", "de", "es", "zh", "ja", "ko"],
+  "ignoreTerms": ["damn"],
+  "terms": [{ "term": "nincompoop", "category": "insult", "language": "en" }]
+}

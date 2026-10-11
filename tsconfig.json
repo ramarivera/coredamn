@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "types": ["node"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
+    "declaration": true,
+    "skipLibCheck": true,
+    "rootDir": ".",
+    "plugins": [
+      { "name": "@effect/language-service", "diagnosticSeverity": { "floatingEffect": "error" } }
+    ]
+  },
+  "include": ["src/**/*.ts", "test/**/*.ts"]
+}

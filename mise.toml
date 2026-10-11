@@ -1,0 +1,21 @@
+[tools]
+node = "24.18.0"
+pnpm = "11.5.0"
+
+[tasks.dev]
+description = "Run the Commander CLI"
+run = "node src/cli.ts"
+
+[tasks.check]
+description = "Typecheck, lint, test, and build"
+run = "pnpm check"
+
+[tasks.test]
+run = "pnpm test"
+
+[tasks.build]
+run = "pnpm build"
+
+[tasks.package]
+description = "Build an installable npm tarball in development artifact storage"
+run = "pnpm package"

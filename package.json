@@ -1,0 +1,53 @@
+{
+  "name": "coredamn",
+  "version": "0.1.0",
+  "description": "A core dump of your patience. Offline coding-agent transcript analytics.",
+  "license": "MIT",
+  "author": "Ramiro Rivera",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ramarivera/coredamn.git"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "type": "module",
+  "bin": {
+    "coredamn": "bin/coredamn.mjs"
+  },
+  "engines": {
+    "node": ">=24.15.0"
+  },
+  "packageManager": "pnpm@11.5.0",
+  "scripts": {
+    "dev": "node src/cli.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "format": "biome check --write .",
+    "test": "node --test test/*.test.ts",
+    "build": "node scripts/build.mjs",
+    "package": "node scripts/pack.mjs",
+    "check": "pnpm typecheck && pnpm check:effect && pnpm lint && pnpm test && pnpm build",
+    "postinstall": "effect-tsgo patch --typescript",
+    "prepublishOnly": "node scripts/require-tarball-publish.mjs",
+    "check:effect": "node scripts/check-effect.mjs",
+    "check:browser": "node scripts/browser-proof.mjs",
+    "check:package": "node scripts/package-proof.mjs"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "2.6.2",
+    "commander": "15.0.0",
+    "effect": "4.0.3",
+    "ink": "8.0.0",
+    "node-llama-cpp": "3.22.1",
+    "react": "19.3.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.5.15",
+    "@effect/tsgo": "0.51.1",
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "typescript": "7.0.2"
+  }
+}
