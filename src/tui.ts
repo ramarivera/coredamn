@@ -208,7 +208,9 @@ function Dashboard({ report }: { report: Report }): ReactElement {
 }
 
 export async function browse(report: Report): Promise<void> {
-  const app = render(h(Dashboard, { report }), { exitOnCtrlC: true });
+  // This command already requires a real TTY. Explicitly honor the requested
+  // interactive dashboard even when its parent process sets CI=true.
+  const app = render(h(Dashboard, { report }), { exitOnCtrlC: true, interactive: true });
   try {
     await app.waitUntilExit();
   } finally {
