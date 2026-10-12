@@ -30,6 +30,7 @@ export const Occurrences = Schema.Struct({
   insults: Schema.Array(Occurrence),
   profanity: Schema.Array(Occurrence),
 });
+export type Occurrences = typeof Occurrences.Type;
 export const policyId = createHash("sha256")
   .update(
     JSON.stringify({

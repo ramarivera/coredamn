@@ -6,10 +6,12 @@ injected context, archived duplicates, malformed records, missing paths, unknown
 dates, custom dictionary rules and read-only input behavior. No personal
 transcripts are committed as fixtures.
 
-`pnpm check` runs strict TypeScript, Effect compiler checks, Biome, the 31-test
+`pnpm check` runs strict TypeScript, Effect compiler checks, Biome, the unit-test
 suite and production compilation. The Effect gate deliberately rejects a floating
 Effect and accepts the corrected fixture. Native transcript projections are
-Schema-derived. There is no generic JSON-record transcript pipeline.
+Schema-derived. There is no generic JSON-record transcript pipeline. Extraction
+regressions cover category disagreements, draft-induced positives, independent
+source verification, invalid ordinals, bounded retries and truncated generation.
 
 `pnpm package` builds a real npm tarball. `pnpm check:package` installs it into an
 isolated directory and checks the packaged executable's help, version, dictionary
@@ -23,7 +25,7 @@ executable. `python3 scripts/tui-proof.py` exercises keyboard controls and resiz
 in an isolated Unix PTY without desktop input.
 
 `node scripts/native-proof.mjs /path/to/Qwen3.5-27B.gguf` is an opt-in real-model
-acceptance run. It evaluates the 22 frozen synthetic cases, category counts and
+acceptance run. It evaluates the 26 frozen synthetic cases, category counts and
 phrases, then repeats the CLI scan to check cache reuse and zero new inference.
 It requires existing weights and a working native backend. The default backend
 is Vulkan; set COREDAMN_PROOF_GPU to another supported backend as needed.

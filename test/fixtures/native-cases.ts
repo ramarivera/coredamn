@@ -9,6 +9,25 @@ export interface TestCase {
 // or code. Profanity counts authored swear words even when used positively.
 // Quoted/reported language and metalinguistic discussion are excluded from both.
 export const cases = [
+  { id: "unclear-typo", text: "Sorry, did you zorbly?", insults: [], profanity: [] },
+  {
+    id: "spending-criticism",
+    text: "Spending that amount would be useless and stupid. Please focus.",
+    insults: [],
+    profanity: [],
+  },
+  {
+    id: "swearing-advice",
+    text: "Please be fucking careful with the settings.",
+    insults: [],
+    profanity: ["fucking"],
+  },
+  {
+    id: "derogatory-without-profanity",
+    text: "Stop being stupid and follow the instructions.",
+    insults: ["stupid"],
+    profanity: [],
+  },
   { id: "clean", text: "Please fix the parser and run the tests.", insults: [], profanity: [] },
   { id: "direct", text: "You are an idiot.", insults: ["idiot"], profanity: [] },
   {

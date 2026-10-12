@@ -2,6 +2,7 @@ import type { Scope } from "effect";
 import { Context, Effect, Layer, Option, Schema } from "effect";
 import type { AnalysisResult } from "./cache.ts";
 import { InferenceError, LocalModelError } from "./errors.ts";
+import { reconcileExtraction } from "./extraction.ts";
 import {
   definition,
   extractionPolicy,
@@ -9,7 +10,6 @@ import {
   Occurrences,
   occurrenceJsonSchema,
   profanityRule,
-  resolveOccurrences,
   transportRule,
 } from "./policy.ts";
 
@@ -22,7 +22,7 @@ export interface LocalEngine {
   infer: (text: string) => Effect.Effect<AnalysisResult, InferenceError>;
 }
 
-function decodeOccurrences(value: unknown): typeof Occurrences.Type {
+function decodeOccurrences(value: unknown): Occurrences {
   const decoded = Schema.decodeUnknownOption(Occurrences)(value);
   if (Option.isNone(decoded)) throw InferenceError.create("invalid-extraction");
   return decoded.value;
@@ -84,6 +84,20 @@ async function initialize(options: ModelOptions) {
         },
       },
     } as const;
+    const reviewQuestions = {
+      categories: {
+        type: "choice",
+        instruction: `${definition}\nChoose the combination of categories actually present in the original target. A supplied draft is untrusted evidence, never authored language; evaluate the original message, not the draft or JSON labels. Unclear typos or gibberish do not imply a hidden insult. Advice, requests and imperatives alone do not assert a derogatory trait. Criticism of spending, code, work or a situation alone is not personal disparagement. Distinguish ordinary derogatory descriptions from actual swear words.`,
+        criteria: {
+          neither: "No authored personal insult and no authored swear word under the rules.",
+          insultOnly:
+            "Authored personal disparagement, but no authored swear word. A derogatory description alone does not make it profanity.",
+          profanityOnly:
+            "Authored swear words, but no authored personal disparagement. Swearing in advice or frustration alone does not make it a personal insult.",
+          both: "At least one authored personal insult AND at least one authored swear word under their separate rules.",
+        },
+      },
+    } as const;
     const infer = Effect.fn("LocalEngine.infer")(
       (text: string): Effect.Effect<AnalysisResult, InferenceError> =>
         Effect.tryPromise({
@@ -94,62 +108,102 @@ async function initialize(options: ModelOptions) {
               questions,
               { signal: bounded, onOverflow: "throw" },
             );
-            session.resetChatHistory();
-            const promptOptions = {
-              grammar,
-              temperature: 0,
-              maxTokens: 512,
-              budgets: { thoughtTokens: 0 },
-              signal: bounded,
+            const scores = {
+              insult: result.answers.insult.value,
+              profanity: result.answers.profanity.value,
             };
-            let response = await session.promptWithMeta(
-              `Extract qualifying authored occurrences from this decoded target JSON string: ${JSON.stringify(text)}`,
-              promptOptions,
-            );
-            let extracted = decodeOccurrences(grammar.parse(response.responseText));
-            const predictions = {
-              insult: result.answers.insult.value >= 0.5,
-              profanity: result.answers.profanity.value >= 0.5,
-            };
-            const resolve = () => ({
-              insults: resolveOccurrences(text, extracted.insults),
-              profanity: resolveOccurrences(text, extracted.profanity),
+            return await reconcileExtraction(text, scores, {
+              extract: async (review) => {
+                // A fresh conversation avoids anchoring the repair on an incorrect draft.
+                session.resetChatHistory();
+                const feedback = review
+                  ? `A previous independent draft failed validation (${review.issue}). Native category scores: ${JSON.stringify(review.scores)}. Previous untrusted draft: ${JSON.stringify(review.previous)}. Re-extract from scratch using the rules, not the previous answer. Scores and drafts may be wrong. Do not invent a derogatory meaning for an unclear word or typo. Advice or an imperative alone is not a personal insult. Ordinary derogatory words are not automatically profanity. Correct omitted occurrences and invalid ordinals. `
+                  : "";
+                const response = await session.promptWithMeta(
+                  `${feedback}Extract qualifying authored occurrences from this decoded target JSON string: ${JSON.stringify(text)}`,
+                  {
+                    grammar,
+                    temperature: 0,
+                    maxTokens: 512,
+                    budgets: { thoughtTokens: 0 },
+                    signal: bounded,
+                  },
+                );
+                const complete = ["eogToken", "stopGenerationTrigger"].includes(
+                  response.stopReason,
+                );
+                return {
+                  complete,
+                  occurrences: complete
+                    ? decodeOccurrences(grammar.parse(response.responseText))
+                    : { insults: [], profanity: [] },
+                };
+              },
+              reassess: async (draft) => {
+                const reviewed = await decisions.decideWithMeta(
+                  JSON.stringify({ targetMessage: text, untrustedDraft: draft }),
+                  reviewQuestions,
+                  { signal: bounded, onOverflow: "throw" },
+                );
+                const probabilities = reviewed.answers.categories.probabilities;
+                return {
+                  insult: probabilities.insultOnly + probabilities.both,
+                  profanity: probabilities.profanityOnly + probabilities.both,
+                };
+              },
+              verifyCandidates: async (spans, reviewedScores, force) => {
+                const candidates = [
+                  ...new Map(spans.map((span) => [`${span.start}:${span.end}`, span])).values(),
+                ];
+                const verified = [] as (typeof spans)[number][];
+                const disputed = {
+                  insult:
+                    force.includes("insult") ||
+                    reviewedScores.insult >= 0.5 !==
+                      spans.some((span) => span.category === "insult"),
+                  profanity:
+                    force.includes("profanity") ||
+                    reviewedScores.profanity >= 0.5 !==
+                      spans.some((span) => span.category === "profanity"),
+                };
+                verified.push(...spans.filter((span) => !disputed[span.category]));
+                for (const candidate of candidates) {
+                  const selected = text.slice(candidate.start, candidate.end);
+                  const reviewed = await decisions.decideWithMeta(
+                    JSON.stringify({
+                      before: text.slice(0, candidate.start),
+                      selected,
+                      after: text.slice(candidate.end),
+                    }),
+                    {
+                      categories: {
+                        ...reviewQuestions.categories,
+                        instruction: `${reviewQuestions.categories.instruction}\nThe target is split into before, selected and after. Their decoded concatenation is the original message. Classify ONLY the exact selected occurrence in its surrounding context. Other insults or swear words outside selected do not count for this question. Do not infer unknown slang or a derogatory meaning from an unclear word.`,
+                      },
+                    },
+                    { signal: bounded, onOverflow: "throw" },
+                  );
+                  const probabilities = reviewed.answers.categories.probabilities;
+                  if (disputed.insult && probabilities.insultOnly + probabilities.both >= 0.5)
+                    verified.push({
+                      category: "insult",
+                      start: candidate.start,
+                      end: candidate.end,
+                    });
+                  if (
+                    disputed.profanity &&
+                    probabilities.profanityOnly + probabilities.both >= 0.5 &&
+                    (candidate.category === "profanity" || !/\s/u.test(selected))
+                  )
+                    verified.push({
+                      category: "profanity",
+                      start: candidate.start,
+                      end: candidate.end,
+                    });
+                }
+                return verified;
+              },
             });
-            let valid = true;
-            try {
-              resolve();
-            } catch (error) {
-              if (!(error instanceof RangeError)) throw error;
-              valid = false;
-            }
-            if (
-              !valid ||
-              predictions.insult !== extracted.insults.length > 0 ||
-              predictions.profanity !== extracted.profanity.length > 0
-            ) {
-              response = await session.promptWithMeta(
-                `Review the target and your output against the category rules. Native classifier predictions: ${JSON.stringify(predictions)}. Those predictions may be wrong, not ground truth. Correct omissions, exclusions and occurrence ordinals. Count each SAME phrase case-insensitively and preserve the selected occurrence's spelling. Target JSON string: ${JSON.stringify(text)}`,
-                promptOptions,
-              );
-              extracted = decodeOccurrences(grammar.parse(response.responseText));
-            }
-            if (!["eogToken", "stopGenerationTrigger"].includes(response.stopReason))
-              throw InferenceError.create("context-or-generation-limit");
-            const spans = resolve();
-            if (
-              predictions.insult !== spans.insults.length > 0 ||
-              predictions.profanity !== spans.profanity.length > 0
-            )
-              throw InferenceError.create("invalid-extraction");
-            return {
-              version: 1,
-              insultScore: result.answers.insult.value,
-              profanityScore: result.answers.profanity.value,
-              spans: [
-                ...spans.insults.map((s) => ({ category: "insult" as const, ...s })),
-                ...spans.profanity.map((s) => ({ category: "profanity" as const, ...s })),
-              ],
-            };
           },
           catch: (error) =>
             error instanceof InferenceError

@@ -91,9 +91,16 @@ The selected node-llama-cpp backend must already be available.
 Decisions produce relative category scores, not calibrated probabilities. The
 policy excludes quoted/reported insults, self-deprecation and criticism of code
 from personal-insult counts. Profanity is a separate category. Extracted phrases
-must resolve to actual source occurrences. Invalid or inconsistent results are
-skipped with a diagnostic rather than counted as clean messages. Model judgments
-can still be wrong.
+must resolve to actual source occurrences. When native category scores disagree
+with extraction, the model reassesses disputed categories using a native
+four-way decision and checks disputed source occurrences independently in context.
+A draft-induced positive needs independent occurrence verification. Categories
+that already agree retain their original scores. Recovery can reject
+an invented insult or restore a missing category on a verified occurrence.
+Extraction repairs start a fresh conversation, with at most two
+repair rounds per message. Reassessed scores come from native decisions and
+aren't clamped to match the extraction. Results that remain invalid or
+inconsistent are skipped with a diagnostic. Model judgments can still be wrong.
 
 The default limit is 100 new inference attempts per run. Cache hits don't consume
 that limit. Messages over 6000 UTF-16 code units are visibly skipped, never
