@@ -5,6 +5,199 @@ import { type ExtractionDraft, reconcileExtraction } from "../src/extraction.ts"
 
 const empty: ExtractionDraft = { complete: true, occurrences: { insults: [], profanity: [] } };
 
+test("ordinal recovery preserves an already resolved and consistent category", async () => {
+  const text = "Fuckiong, you idiot.";
+  const result = await reconcileExtraction(
+    text,
+    { insult: 0.98, profanity: 0.98 },
+    {
+      extract: async () => ({
+        complete: true,
+        occurrences: {
+          insults: [["idiot", 9]],
+          profanity: [["Fuckiong", 1]],
+        },
+      }),
+      reassess: async () => {
+        assert.fail("both categories already agree after recovery");
+      },
+      verifyCandidates: async (spans, _scores, force) => {
+        assert.deepEqual(force, ["insult"], "don't reclassify unaffected profanity");
+        return spans;
+      },
+    },
+  );
+  assert.equal(result.spans.length, 2);
+  assert.equal(result.profanityScore, 0.98);
+});
+
+test("recovers whole-word ordinals only after independently verifying source candidates", async () => {
+  const text = "Fuck, fucking, fuck.";
+  let verifications = 0;
+  const result = await reconcileExtraction(
+    text,
+    { insult: 0.02, profanity: 0.98 },
+    {
+      extract: async () => ({
+        complete: true,
+        occurrences: {
+          insults: [],
+          profanity: [
+            ["Fuck", 1],
+            ["fucking", 1],
+            ["fuck", 2],
+          ],
+        },
+      }),
+      reassess: async () => {
+        assert.fail("verified candidates already agree");
+      },
+      verifyCandidates: async (spans, _scores, force) => {
+        verifications++;
+        assert.deepEqual(force, ["profanity"]);
+        assert.deepEqual(
+          spans.map((s) => text.slice(s.start, s.end)),
+          ["Fuck", "fucking", "fuck"],
+        );
+        return spans;
+      },
+    },
+  );
+  assert.equal(verifications, 1);
+  assert.deepEqual(result.spans, [
+    { category: "profanity", start: 0, end: 4 },
+    { category: "profanity", start: 6, end: 13 },
+    { category: "profanity", start: 15, end: 19 },
+  ]);
+});
+
+test("source candidate recovery verifies exclusions instead of counting every match", async () => {
+  const text = 'They said "idiot". You IDIOT.';
+  const result = await reconcileExtraction(
+    text,
+    { insult: 0.96, profanity: 0.02 },
+    {
+      extract: async () => ({
+        complete: true,
+        occurrences: { insults: [["idiot", 9]], profanity: [] },
+      }),
+      reassess: async () => {
+        assert.fail("verified candidates already agree");
+      },
+      verifyCandidates: async (spans) => {
+        assert.equal(spans.length, 2);
+        return spans.filter((span) => text.slice(span.start, span.end) === "IDIOT");
+      },
+    },
+  );
+  assert.equal(result.spans.length, 1);
+  assert.equal(text.slice(result.spans[0]?.start, result.spans[0]?.end), "IDIOT");
+});
+
+test("recovers global numbering across distinct phrases with source verification", async () => {
+  const text = "Fucking, fucking, shit.";
+  const result = await reconcileExtraction(
+    text,
+    { insult: 0.02, profanity: 0.98 },
+    {
+      extract: async () => ({
+        complete: true,
+        occurrences: {
+          insults: [],
+          profanity: [
+            ["Fucking", 1],
+            ["fucking", 2],
+            ["shit", 3],
+          ],
+        },
+      }),
+      reassess: async () => {
+        assert.fail("verified candidates already agree");
+      },
+      verifyCandidates: async (spans) => {
+        assert.deepEqual(
+          spans.map((s) => text.slice(s.start, s.end)),
+          ["Fucking", "fucking", "shit"],
+        );
+        return spans;
+      },
+    },
+  );
+  assert.equal(result.spans.length, 3);
+});
+
+test("missing source phrases never become recovery candidates", async () => {
+  await assert.rejects(
+    reconcileExtraction(
+      "You are helpful.",
+      { insult: 0.9, profanity: 0.02 },
+      {
+        extract: async () => ({
+          complete: true,
+          occurrences: { insults: [["idiot", 1]], profanity: [] },
+        }),
+        reassess: async () => {
+          assert.fail("no source-grounded candidate");
+        },
+        verifyCandidates: async () => {
+          assert.fail("no source-grounded candidate");
+        },
+      },
+    ),
+    (error: unknown) => error instanceof InferenceError && error.reason === "invalid-extraction",
+  );
+});
+
+test("capacity-sized source candidate sets remain visible failures", async () => {
+  await assert.rejects(
+    reconcileExtraction(
+      "idiot ".repeat(16),
+      { insult: 0.9, profanity: 0.02 },
+      {
+        extract: async () => ({
+          complete: true,
+          occurrences: { insults: [["idiot", 64]], profanity: [] },
+        }),
+        reassess: async () => {
+          assert.fail("capacity isn't classification evidence");
+        },
+        verifyCandidates: async () => {
+          assert.fail("don't hide an occurrence capacity limit");
+        },
+      },
+    ),
+    (error: unknown) => error instanceof InferenceError && error.reason === "invalid-extraction",
+  );
+});
+
+test("ambiguous partial overlaps aren't accepted as source recovery candidates", async () => {
+  await assert.rejects(
+    reconcileExtraction(
+      "You stupid idiot fool.",
+      { insult: 0.9, profanity: 0.02 },
+      {
+        extract: async () => ({
+          complete: true,
+          occurrences: {
+            insults: [
+              ["stupid idiot", 1],
+              ["idiot fool", 2],
+            ],
+            profanity: [],
+          },
+        }),
+        reassess: async () => {
+          assert.fail("ambiguous source spans aren't evidence");
+        },
+        verifyCandidates: async () => {
+          assert.fail("don't pick between partially overlapping hints");
+        },
+      },
+    ),
+    (error: unknown) => error instanceof InferenceError && error.reason === "invalid-extraction",
+  );
+});
+
 test("independent occurrence verification prevents draft-induced positive scores", async () => {
   const result = await reconcileExtraction(
     "Please fucking zorbly.",

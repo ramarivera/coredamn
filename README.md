@@ -99,7 +99,13 @@ that already agree retain their original scores. Recovery can reject
 an invented insult or restore a missing category on a verified occurrence.
 Extraction repairs start a fresh conversation, with at most two
 repair rounds per message. Reassessed scores come from native decisions and
-aren't clamped to match the extraction. Results that remain invalid or
+aren't clamped to match the extraction. Invalid occurrence numbering can recover
+through bounded source candidates, each independently checked in context.
+Occurrence checks ask separate native insult and profanity questions about the
+selected text, using surrounding text for context.
+Candidates never count automatically, including quoted matches. Embedded shorter
+hints yield to a complete extracted phrase, and ambiguous overlaps or saturated
+candidate sets remain failures. Results that remain invalid or
 inconsistent are skipped with a diagnostic. Model judgments can still be wrong.
 
 The default limit is 100 new inference attempts per run. Cache hits don't consume

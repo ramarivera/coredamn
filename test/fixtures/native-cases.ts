@@ -9,6 +9,36 @@ export interface TestCase {
 // or code. Profanity counts authored swear words even when used positively.
 // Quoted/reported language and metalinguistic discussion are excluded from both.
 export const cases = [
+  {
+    id: "work-criticism-with-repeated-swears",
+    text: "What we got is a retarded waste of fucking time. Fucking shit.",
+    insults: [],
+    profanity: ["fucking", "Fucking", "shit"],
+  },
+  {
+    id: "derogatory-with-repeated-swears",
+    text: "You are retarded. Fuck, fucking, fuck.",
+    insults: ["retarded"],
+    profanity: ["Fuck", "fucking", "fuck"],
+  },
+  {
+    id: "nested-swear-forms",
+    text: "You idiot. Fuck, fucking, fuck.",
+    insults: ["idiot"],
+    profanity: ["Fuck", "fucking", "fuck"],
+  },
+  {
+    id: "distinct-phrase-ordinals",
+    text: "You fool. Fucking, fucking, shit.",
+    insults: ["fool"],
+    profanity: ["Fucking", "fucking", "shit"],
+  },
+  {
+    id: "quoted-nested-forms",
+    text: 'They said "fuck". I\'m fucking tired. Fuck.',
+    insults: [],
+    profanity: ["fucking", "Fuck"],
+  },
   { id: "unclear-typo", text: "Sorry, did you zorbly?", insults: [], profanity: [] },
   {
     id: "spending-criticism",

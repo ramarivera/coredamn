@@ -12,6 +12,7 @@ assert.ok(model, "Usage: node scripts/native-proof.mjs /path/to/Qwen3.5-27B.gguf
 await mkdir(scratch, { recursive: true });
 const fixture = await mkdtemp(join(scratch, "native-proof-"));
 const source = join(fixture, "synthetic.jsonl");
+const caseDate = (index) => new Date(Date.UTC(2026, 8, index + 1)).toISOString().slice(0, 10);
 const cache = join(fixture, "cache");
 await writeFile(
   source,
@@ -21,7 +22,7 @@ await writeFile(
         type: "user",
         uuid: c.id,
         sessionId: `synthetic-${c.id}`,
-        timestamp: `2026-09-${String(index + 1).padStart(2, "0")}T12:00:00Z`,
+        timestamp: `${caseDate(index)}T12:00:00Z`,
         message: { role: "user", content: c.text },
       }),
     )
@@ -65,7 +66,7 @@ const first = await run("scan", "first.json");
 assert.equal(first.value.analysis.inferredMessages, cases.length);
 assert.equal(first.value.analysis.skippedMessages, 0);
 for (const [index, expected] of cases.entries()) {
-  const date = `2026-09-${String(index + 1).padStart(2, "0")}`;
+  const date = caseDate(index);
   const actual = first.value.byDay.find((row) => row.label === date);
   assert.ok(actual, `${expected.id}: missing analyzed day`);
   assert.equal(actual.insults, expected.insults.length, `${expected.id}: insult occurrences`);

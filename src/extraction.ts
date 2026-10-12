@@ -37,6 +37,58 @@ function resolve(text: string, draft: ExtractionDraft): AnalysisResult["spans"] 
     })),
   ];
 }
+
+function sourceCandidates(
+  text: string,
+  occurrences: Occurrences,
+): { spans: AnalysisResult["spans"]; invalid: (keyof CategoryScores)[] } | undefined {
+  const candidates: AnalysisResult["spans"][number][] = [];
+  const invalid: (keyof CategoryScores)[] = [];
+  for (const [category, pairs] of [
+    ["insult", occurrences.insults],
+    ["profanity", occurrences.profanity],
+  ] as const) {
+    try {
+      candidates.push(...resolveOccurrences(text, pairs).map((span) => ({ category, ...span })));
+      continue;
+    } catch (error) {
+      if (!(error instanceof RangeError)) throw error;
+    }
+    invalid.push(category);
+    // A capacity-sized draft may be incomplete. Recovery mustn't hide that limit.
+    if (pairs.length >= 16) return;
+    const unique = new Map<string, AnalysisResult["spans"][number]>();
+    for (const phrase of new Set(pairs.map(([phrase]) => phrase))) {
+      if (!phrase) return;
+      const escaped = phrase.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+      let found = false;
+      for (const match of text.matchAll(new RegExp(escaped, "giu"))) {
+        found = true;
+        const start = match.index;
+        const end = start + match[0].length;
+        unique.set(`${start}:${end}`, { category, start, end });
+        if (unique.size > 128) return;
+      }
+      if (!found) return;
+    }
+    const spans = [...unique.values()].filter(
+      (span, _index, all) =>
+        !all.some((other) => other !== span && other.start <= span.start && other.end >= span.end),
+    );
+    // Prefer the complete extracted phrase over an embedded shorter hint.
+    // Partial overlaps are ambiguous, so leave them to a fresh extraction.
+    if (
+      spans.length >= 16 ||
+      spans.some((span, index) =>
+        spans.slice(0, index).some((other) => span.start < other.end && span.end > other.start),
+      )
+    )
+      return;
+    candidates.push(...spans);
+  }
+  return { spans: candidates.sort((a, b) => a.start - b.start), invalid };
+}
+
 export async function reconcileExtraction(
   text: string,
   initial: CategoryScores,
@@ -44,12 +96,25 @@ export async function reconcileExtraction(
 ): Promise<AnalysisResult> {
   let draft = await driver.extract();
   let scores = initial;
+  const recovered = new Map<string, AnalysisResult["spans"]>();
   for (let round = 0; round <= 2; round++) {
     let spans: AnalysisResult["spans"] | undefined;
     try {
       spans = resolve(text, draft);
     } catch (error) {
       if (!(error instanceof RangeError)) throw error;
+    }
+    if (!spans) {
+      const candidates = sourceCandidates(text, draft.occurrences);
+      if (candidates?.spans.length) {
+        const key = JSON.stringify(candidates);
+        spans = recovered.get(key);
+        if (!spans) {
+          // Hints identify possible source text, never which occurrences count.
+          spans = await driver.verifyCandidates(candidates.spans, scores, candidates.invalid);
+          recovered.set(key, spans);
+        }
+      }
     }
     const result = (): AnalysisResult => ({
       version: 1,
